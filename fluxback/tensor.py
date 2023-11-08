@@ -1,6 +1,9 @@
 from math import prod
 import numpy as np
 from .topology import topology_sort
+from . import parameter
+
+from graphviz import Digraph
 
 class tensor:
 	def __init__(self, values, requires_grad=False):
@@ -28,7 +31,7 @@ class tensor:
 			for gradient, dependant in zip(back_grad, node.dependencies):
 				if dependant.requires_grad:
 					# edge case where the dependant is a scalar and the gradient is a vector
-					if dependant.grad.shape != gradient.shape:
+					if dependant.grad.size == 1 and gradient.size != 1:
 						gradient = gradient.sum()
 					dependant.grad += gradient
 
@@ -58,6 +61,8 @@ class tensor:
 		return result
 
 	def __add__(self, other):
+		if isinstance(other, parameter.Parameter):
+			other = other.t
 		if not isinstance(other, tensor):
 			other = tensor(other)
 		result = tensor(self.values + other.values)
@@ -71,6 +76,8 @@ class tensor:
 		return self + other
 
 	def __sub__(self, other):
+		if isinstance(other, parameter.Parameter):
+			other = other.t
 		if not isinstance(other, tensor):
 			other = tensor(other)
 		result = tensor(self.values - other.values)
@@ -81,11 +88,15 @@ class tensor:
 		return result
 
 	def __rsub__(self, other):
+		if isinstance(other, parameter.Parameter):
+			other = other.t
 		if not isinstance(other, tensor):
 			other = tensor(other)
 		return other - self
 
 	def __mul__(self, other):
+		if isinstance(other, parameter.Parameter):
+			other = other.t
 		if not isinstance(other, tensor):
 			other = tensor(other)
 		result = tensor(self.values * other.values)
@@ -99,6 +110,8 @@ class tensor:
 		return self * other
 
 	def __truediv__(self, other):
+		if isinstance(other, parameter.Parameter):
+			other = other.t
 		if not isinstance(other, tensor):
 			other = tensor(other)
 		result = tensor(self.values / other.values)
@@ -109,11 +122,15 @@ class tensor:
 		return result
 
 	def __rtruediv__(self, other):
+		if isinstance(other, parameter.Parameter):
+			other = other.t
 		if not isinstance(other, tensor):
 			other = tensor(other)
 		return other / self
 	
 	def __pow__(self, other):
+		if isinstance(other, parameter.Parameter):
+			other = other.t
 		if not isinstance(other, tensor):
 			other = tensor(other)
 		result = tensor(self.values ** other.values)
@@ -125,11 +142,15 @@ class tensor:
 		return result
 
 	def __rpow__(self, other):
+		if isinstance(other, parameter.Parameter):
+			other = other.t
 		if not isinstance(other, tensor):
 			other = tensor(other)
 		return other ** self
 
 	def __matmul__(self, other):
+		if isinstance(other, parameter.Parameter):
+			other = other.t
 		if not isinstance(other, tensor):
 			other = tensor(other)
 		result = tensor(self.values @ other.values)
@@ -140,6 +161,8 @@ class tensor:
 		return result
 
 	def __rmatmul__(self, other):
+		if isinstance(other, parameter.Parameter):
+			other = other.t
 		if not isinstance(other, tensor):
 			other = tensor(other)
 		return other @ self
@@ -161,6 +184,10 @@ class tensor:
 		return result
 	
 	def max(self, other):
+		if isinstance(other, parameter.Parameter):
+			other = other.t
+		if not isinstance(other, tensor):
+			other = tensor(other)
 		result = tensor(np.maximum(self.values, other.values))
 		if self.requires_grad or other.requires_grad:
 			result.requires_grad = True
@@ -188,3 +215,25 @@ class tensor:
 	@staticmethod
 	def randn(shape, requires_grad=False):
 		return tensor(np.random.randn(*shape), requires_grad=requires_grad)
+	
+	def graphviz(self):
+		dot = Digraph()
+		node_map = {}
+		node_stack = [self]
+		edges = []
+		counter = 1
+		while len(node_stack) > 0:
+			node = node_stack.pop()
+			if node in node_map:
+				continue
+			node_map[node] = counter
+			dot.node(str(counter))
+			counter += 1
+			if node.dependencies is None:
+				continue
+			for dep in node.dependencies:
+				edges.append((node, dep))
+				node_stack.append(dep)
+		for (a, b) in edges:
+			dot.edge(f"{node_map[b]}", f"{node_map[a]}")
+		return dot
