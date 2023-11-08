@@ -3,7 +3,6 @@ import numpy as np
 from .topology import topology_sort
 
 class tensor:
-
 	def __init__(self, values, requires_grad=False):
 		self.values = np.array(values)
 		self.requires_grad = requires_grad
@@ -18,6 +17,9 @@ class tensor:
 
 	def back(self):
 		sorted_list = topology_sort(self)
+		# make sure that self is a scalar
+		if self.values.size != 1:
+			raise Exception("Can only backpropagate scalar values")
 		self.grad = np.ones_like(self.values)
 		for node in sorted_list:
 			if node.grad_fn is None:
@@ -121,12 +123,27 @@ class tensor:
 			result.grad_fn = lambda n: (n.grad * n.dependencies[1].values * n.dependencies[0].values ** (n.dependencies[1].values - 1),
 																	n.grad * np.log(n.dependencies[0].values) * n.dependencies[0].values ** n.dependencies[1].values)
 		return result
-	
+
 	def __rpow__(self, other):
 		if not isinstance(other, tensor):
 			other = tensor(other)
 		return other ** self
-	
+
+	def __matmul__(self, other):
+		if not isinstance(other, tensor):
+			other = tensor(other)
+		result = tensor(self.values @ other.values)
+		if self.requires_grad or other.requires_grad:
+			result.requires_grad = True
+			result.dependencies = [self, other]
+			result.grad_fn = lambda n: (n.grad @ n.dependencies[1].values.T, n.dependencies[0].values.T @ n.grad)
+		return result
+
+	def __rmatmul__(self, other):
+		if not isinstance(other, tensor):
+			other = tensor(other)
+		return other @ self
+
 	def exp(self):
 		result = tensor(np.exp(self.values))
 		if self.requires_grad:
@@ -134,7 +151,7 @@ class tensor:
 			result.dependencies = [self]
 			result.grad_fn = lambda n: (n.grad * np.exp(n.dependencies[0].values),)
 		return result
-	
+
 	def sum(self):
 		result = tensor(self.values.sum())
 		if self.requires_grad:
@@ -150,6 +167,14 @@ class tensor:
 			result.dependencies = [self, other]
 			result.grad_fn = lambda n: (n.grad * (n.dependencies[0].values >= n.dependencies[1].values),
 																	n.grad * (n.dependencies[0].values < n.dependencies[1].values))
+		return result
+
+	def reshape(self, new_shape):
+		result = tensor(self.values.reshape(new_shape))
+		if self.requires_grad:
+			result.requires_grad = True
+			result.dependencies = [self]
+			result.grad_fn = lambda n: (n.grad.reshape(n.dependencies[0].values.shape),)
 		return result
 
 	@staticmethod
