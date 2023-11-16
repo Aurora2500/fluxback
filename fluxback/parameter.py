@@ -1,7 +1,6 @@
-class Parameter:
-	from . import tensor
-	def __init__(self, t, name=None):
-		if not isinstance(t, tensor.tensor):
-			t = tensor.tensor(t)
-		self.t = t
-		self.name = name
+from . import Tensor
+
+class Parameter(Tensor):
+	def __init__(self, values, requires_grad=True):
+		super().__init__(values, requires_grad=requires_grad)
+

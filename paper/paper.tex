@@ -1,0 +1,141 @@
+\documentclass{article}
+
+\usepackage[spanish]{babel}
+\usepackage{subcaption}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{pgffor,pgf}
+\usepackage{bm}
+\usepackage{tikz}
+\usetikzlibrary{babel}
+
+\captionsetup[subfigure]{subrefformat=simple,labelformat=simple}
+\renewcommand\thesubfigure{(\arabic{subfigure})}
+
+
+\title{Backpropagation}
+\author{Aurora Zuoris \\ \texttt{aurora.zuoris101@alu.ulpgc.es}}
+
+\begin{document}
+
+\maketitle
+
+woah
+
+\section{Diferenciación automática}
+
+\subsection{Operaciones matemáticas}
+
+\newpage
+
+\subsection{Funciones de activación}
+
+\subsubsection*{Softmax}
+
+\begin{align*}
+	\bm{s} &= \text{Softmax}(\bm{x}) \\
+	g &= f(\bm{s})
+\end{align*}
+
+El softmax es una de las funciones más complicadas a diferenciar
+dado que cada elemento del vector de entrada es relacionado con
+cada vector de salída.
+Para resolver esto, hay que utilizar la regla de la cadena multivariable.
+
+\def\empty{null}
+
+\begin{figure*}[h]
+\centering
+\begin{subfigure}{0.45\linewidth}
+\centering
+\begin{tikzpicture}[
+	value/.style={circle,draw},
+	value \empty/.style={
+		draw=none,
+		execute at begin node=$\hdots$
+	}
+]
+	\node[value] (g) at (0,6) {$g$};
+	\foreach \i [count=\x] in {1,2,3,null,n} {
+		\node[value,value \i/.try] (s-\i) at (\x-3,4) {\ifx\i\empty \else$s_\i$\fi};
+	}
+
+	\foreach \i [count=\x] in {1,2,3,null,n} {
+		\node[value,value \i/.try] (x-\i) at (\x-3,2) {\ifx\i\empty \else$x_\i$\fi};
+	}
+
+	\foreach \i in {1,2,3,n}
+		\draw[->] (g) -- (s-\i);
+	\foreach \i in {1,2,3,n}
+		\foreach \j in {1,2,3,n}
+			\draw[->] (s-\i) -- (x-\j);
+\end{tikzpicture}
+\caption{grafo completo de dependencias}
+\end{subfigure}
+\hfill
+\begin{subfigure}{0.45\linewidth}
+\centering
+\begin{tikzpicture}[
+	value/.style={circle,draw},
+	value \empty/.style={
+		draw=none,
+		execute at begin node=$\hdots$
+	},
+	label/.style={midway,fill=white,inner sep=1pt}
+]
+	\node[value] (g) at (0,6) {$g$};
+	\foreach \i [count=\x] in {1,2,3,null,n} {
+		\node[value,value \i/.try] (s-\i) at (\x*1.2-3*1.2,4) {\ifx\i\empty \else$s_\i$\fi};
+	}
+
+	\node[value] (x) at (0,2) {$x_i$};
+
+	\foreach \i in {1,2,3,n}
+		\draw[->] (g) -- (s-\i) node[label,pos=0.6] {$\frac{\partial g}{\partial s_\i}$};
+	\foreach \i in {1,2,3,n}
+			\draw[->] (s-\i) -- (x) node[label,pos=0.4] {$\frac{\partial s_\i}{x_i}$};
+\end{tikzpicture}
+\caption{grafo simplificado a una entrada}
+\end{subfigure}
+\end{figure*}
+
+\begin{equation*}
+	\frac{\partial g}{\partial x_i} = \sum_{j=1}^n \frac{\partial g}{\partial s_j} \frac{\partial s_j}{\partial x_i}
+\end{equation*}
+
+Esto se puede simplificar de forma matricial teniendo en cuenta que hay $n$ valores de $\frac{\partial g}{\partial s_j}$ y $n\times n$ valores de $\frac{\partial s_j}{\partial x_i}$,
+tal que la primera se puede representar como el gradiente de $g$ respecto a $s$ y la segunda como la matriz jacobiana de $s$ respecto a $x$,
+de forma que el producto matricial de estas dos nos da el gradiente con respecto a $\bm{x}$.
+
+\renewcommand{\arraystretch}{1.8}
+
+\def\one{1}
+
+\begin{equation*}
+	\frac{\partial g}{\partial \bm{x}} = 
+	\frac{\partial \bm{s}}{\partial \bm{x}} \frac{\partial g}{\partial \bm{s}} =
+	\begin{bmatrix}
+		\frac{\partial s_1}{\partial x_1} & \frac{\partial s_2}{\partial x_1} & \cdots & \frac{\partial s_n}{\partial x_1} \\
+		\frac{\partial s_1}{\partial x_2} & \frac{\partial s_2}{\partial x_2} & \cdots & \frac{\partial s_n}{\partial x_2} \\
+		\vdots & \vdots & \ddots & \vdots \\
+		\frac{\partial s_1}{\partial x_n} & \frac{\partial s_2}{\partial x_n} & \cdots & \frac{\partial s_n}{\partial x_n} \\
+		
+	\end{bmatrix}
+	\begin{bmatrix}
+		\frac{\partial g}{\partial s_1} \\
+		\frac{\partial g}{\partial s_2} \\
+		\vdots \\
+		\frac{\partial g}{\partial s_n}
+	\end{bmatrix}
+\end{equation*}
+
+Para los valores de la jacobiana en sí, estos obtienen de la siguiente ecuación:
+
+\begin{equation*}
+	\frac{\partial s_i}{\partial x_j} = \begin{cases}
+		s_i (1 - s_i) \quad \text{si } i = j \\
+		- s_i s_j \quad \text{si } i \neq j \\
+	\end{cases}
+\end{equation*}
+
+\end{document}

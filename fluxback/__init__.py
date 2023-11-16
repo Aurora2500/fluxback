@@ -1,2 +1,2 @@
-from .tensor import tensor
+from .tensor import Tensor
 from . import activation
