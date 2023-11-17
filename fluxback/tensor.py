@@ -52,7 +52,11 @@ class Tensor:
 		return self + other
 
 	def __iadd__(self, other):
-		self.values += other.values
+		if isinstance(other, Tensor):
+			self.values += other.values
+		if isinstance(other, np.ndarray):
+			self.values += other
+		return self
 
 	def __sub__(self, other):
 		if not isinstance(other, Tensor):
@@ -71,7 +75,11 @@ class Tensor:
 		return other - self
 
 	def __isub__(self, other):
-		self.values -= other.values
+		if isinstance(other, Tensor):
+			self.values -= other.values
+		else:
+			self.values -= other
+		return self
 
 	def __mul__(self, other):
 		if not isinstance(other, Tensor):
@@ -88,7 +96,11 @@ class Tensor:
 		return self * other
 
 	def __imul__(self, other):
-		self.values *= other.values
+		if isinstance(other, Tensor):
+			self.values *= other.values
+		if isinstance(other, np.ndarray):
+			self.values *= other
+		return self
 
 	def __truediv__(self, other):
 		if not isinstance(other, Tensor):
@@ -107,7 +119,11 @@ class Tensor:
 		return other / self
 
 	def __itruediv__(self, other):
-		self.values /= other.values
+		if isinstance(other, Tensor):
+			self.values /= other.values
+		if isinstance(other, np.ndarray):
+			self.values /= other
+		return self
 
 	def __pow__(self, other):
 		if not isinstance(other, Tensor):
@@ -127,7 +143,11 @@ class Tensor:
 		return other ** self
 
 	def __ipow__(self, other):
-		self.values **= other.values
+		if isinstance(other, Tensor):
+			self.values **= other.values
+		if isinstance(other, np.ndarray):
+			self.values **= other
+		return self
 
 	def __matmul__(self, other):
 		if not isinstance(other, Tensor):
@@ -146,7 +166,11 @@ class Tensor:
 		return other @ self
 
 	def __imatmul__(self, other):
-		self.values @= other.values
+		if isinstance(other, Tensor):
+			self.values **= other.values
+		if isinstance(other, np.ndarray):
+			self.values @= other
+		return self
 
 	def exp(self):
 		result = ComputationalTensor(np.exp(self.values))
@@ -155,6 +179,15 @@ class Tensor:
 			result.dependencies = [self]
 			result.grad_fn = lambda n: (n.grad * np.exp(n.dependencies[0].values),)
 			result.autodiff_role = "Exp"
+		return result
+
+	def log(self):
+		result = ComputationalTensor(np.log(self.values))
+		if self.requires_grad:
+			result.requires_grad = True
+			result.dependencies = [self]
+			result.grad_fn = lambda n: (n.grad / n.dependencies[0].values,)
+			result.autodiff_role = "Log"
 		return result
 
 	def sum(self):
@@ -252,6 +285,9 @@ class ComputationalTensor(Tensor):
 					# edge case where the dependant is a scalar and the gradient is a vector
 					if dependant.grad.size == 1 and gradient.size != 1:
 						gradient = gradient.sum()
+					# edge case found when dealing with bias and baches
+					if len(dependant.grad.shape) != 0 and dependant.grad.shape[-1] == gradient.shape[-1] and len(dependant.grad.shape) < len(gradient.shape):
+						gradient = gradient.sum(axis=tuple(range(len(gradient.shape) - 1)))
 					dependant.grad += gradient
 
 	def zero(self):

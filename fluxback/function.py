@@ -1,11 +1,11 @@
-from .tensor import Tensor
+from .tensor import Tensor, ComputationalTensor
 
 class Function:
 	def __call__(self, *args):
 		targs = [arg.values if isinstance(arg, Tensor) else arg for arg in args]
 		result = self.forward(*targs)
 		if any(t.requires_grad for t in args):
-			result = Tensor(result)
+			result = ComputationalTensor(result)
 			result.requires_grad = True
 			result.dependencies = [t for t in args]
 			result.grad_fn = self.backward

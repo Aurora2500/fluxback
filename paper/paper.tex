@@ -3,7 +3,8 @@
 \usepackage[spanish]{babel}
 \usepackage{subcaption}
 \usepackage{graphicx}
-\usepackage{amsmath}
+\usepackage{amsmath,amssymb}
+\usepackage{svg}
 \usepackage{pgffor,pgf}
 \usepackage{bm}
 \usepackage{tikz}
@@ -20,22 +21,252 @@
 
 \maketitle
 
-
+La backpropagation se implementará en este trabajo usando el método de diferenciación automática hacia atras.
 
 \section{Diferenciación automática}
 
-\subsection{Operaciones matemáticas}
+La diferenciación automática consiste en calcular la derivada de una función usando la regla de la cadena.
+Existen dos formas de hacerlo, hacia adelante y hacia atrás.
+Hacia adelante consiste en usar numeros duales, de forma que al hacer largas computaciones,
+se va acumulando el valor de las operaciones junto con la derivada.
+Mientras que la diferenciación hacia atrás consiste en construir un grafo de dependencias a lo
+largo de la computación de una expresión, y entonces traversando el grafo de forma inversa, rellenando
+la derivada en cada nodo respecto al último nodo.
 
-\subsubsection*{Adición}
+La diferencia más importante entre las dos es si se quiere obtener el gradiente de muchas variables respecto a una, o de una respecto a muchas.
+Es decir, si hay una función $f$ de muchos a muchos, considerando la jacobiana de $f$ respecto a $x$,
+un paso de diferenciación hacia adelante calcula una columna de la jacobiana, mientras que un paso de diferenciación hacia atrás calcula una fila.
+
+En el aprendizaje automatico, es mucho más comun tener una función de muchos a uno, donde las entradas son los parámetros del modelo y la salida es el error de la red como un único valor numerico.
+Por lo que la diferenciación hacia atrás es mucho más apropiado para este caso,
+ya que con la diferenciación hacia adelante, se tendría que calcular la expresión de la red para cada parametro, en vez de hacerlo una vez desde el error para conseguir la gradiente de tódos los parametros simultaneamente.
 
 \newpage
 
-\subsection{Funciones de activación}
+Para la implementación en sí, cada operación sobre nuestra clase de tensores se implementa de forma que el resultado tiene en cuenta los tensores de los que viene y la operación que se ha hecho.
+de forma que se puede construir un grafo de dependencias a lo largo de la computación de una expresión.
+Entonces para la diferenciación hacia atrás, se elige un nodo de salida, y se calcula la derivade de este respecto a cada uno de sus padres.
 
-\subsubsection*{Softmax}
+Hay que tener en cuenta que este grafo sería un grafo acíclico dirigido, por lo que se puede hacer una ordenación topológica de los nodos para poder hacer la diferenciación hacia atrás de forma eficiente.
+Para esto se usa el algoritmo de Kahn, que consiste en ir eliminando los nodos que no tienen dependencias, y añadirlos a una lista de nodos ordenados.
+
+Una vez obtenida la lista, se puede hacer la diferenciación hacia atrás de forma eficiente, ya que cada nodo solo tiene que calcular la derivada respecto a sus padres, y estos ya han sido calculados.
+Además, si un nodo tiene muchos dependientes, su gradiente será la suma de las derivadas de cada dependiente respecto a este, por lo que también es importante que los nodos se calculen en el orden correcto y que
+se inicializen los gradientes a 0 antes de empezar a calcularlos.
+
+Además, algo notable es que la diferenciación hacia atrás viene de un número escalar para que tenga sentido, pues aunque
+se trabaja con tensores, se asegura que el nodo desde cual se propaga la derivada tiene un tamaño de uno.
+Apartir de este, la propagación de una operación $\bm{x}$ con resultado $\bm{y}$ se modela como la siguiente operación
 
 \begin{align*}
-	\bm{s} &= \text{Softmax}(\bm{x}) \\
+	\bm{y} &= f(\bm{x}) \\
+	z &= g(\bm{y})
+\end{align*}
+
+Donde $g(\bm{y})$ es simplemente el resto de la expresión hasta obtener el valor final $z$ desde el cual se retropropaga.,
+de forma que la diferenciación hacia atrás obtiene la expresión de
+
+\begin{align*}
+	\frac{\partial z}{\partial \bm{x}} &= \frac{\partial z}{\partial \bm{y}} \frac{\partial \bm{y}}{\partial \bm{x}} \\
+\end{align*}
+
+Esto es muy importante en operaciones donde aparecen más los tensores, ya que siempre hay que tener en cuenta
+de que todos los gradientes al final son retropropagados de un único valor escalar, en este caso $z$.
+Además, en esta expresión, $\frac{\partial z}{\partial \bm{y}}$ se toma como un tensor $\bm{g}$ de la misma forma que $\bm{y}$
+que se asume que ya se ha calculado.
+
+Al final, aunque el concepto de las derivadas es originalmente un proceso simbólico y algebráico, muchas veces
+se ha encontrado que el razonamiento y las explicaciones para varias derivadas es más simple si se hace de forma numérica,
+ignorando el significado simbólico de estas.
+
+Esto es especialmente útil en el caso de operaciones no lineales como obtener el máximo de un tensor.
+Simbólicamente esto es un lío, y los matematicos hasta que dirían que no es derivable dado que hay discontinuidades por todos los lados,
+pero en la práctica se puede obtener valores exactos para la gradiente con este razonamiento numérico más que simbólico.
+También es notable de que la existencia de discontinuidades tiene poca importancia, ya que en primer lado son valores únicos
+en un rango de numeros enteros, por lo que la probabilidad de que se obtenga un valor en la que aparece la discontinuidad es
+mínimo, y aunque aparezca, darle cualquier valor razonable a la derivada es suficiente para que el algoritmo de optimización,
+aunque matemáticamente sea dudoso.
+
+\subsection{Operaciones matemáticas simples}
+
+\subsubsection*{Adición}
+
+Dado una expresión como
+
+\begin{align*}
+	\bm{y} &= \bm{a} + \bm{b} \\
+	z &= g(\bm{y})
+\end{align*}
+
+para calcular
+
+\begin{align*}
+	\frac{\partial z}{\partial \bm{a}} &= \frac{\partial z}{\partial \bm{y}} \frac{\partial \bm{y}}{\partial \bm{a}}
+\end{align*}
+
+Teniendo en cuenta que $\frac{\partial z}{\partial \bm{y}}$ es simplemente un tensor $\bm{g}$ de la misma forma que $\bm{y}$,
+es bastante obvio que $\frac{\partial \bm{y}}{\partial \bm{a}} = \bm{1}$, dado que un cambio en $\bm{a}$ afecta $\bm{y}$ de forma directa
+sin ningun tipo de escalado, si la entrada es 1 mayor, la salida lo es también, y lo mismo occure para $\bm{b}$, con lo que
+
+\begin{align*}
+	\frac{\partial z}{\partial \bm{a}} &= \bm{g} \\
+	\frac{\partial z}{\partial \bm{b}} &= \bm{g}
+\end{align*}
+
+Es decir, para las adiciones, simplemente se propaga el gradiente hacia atrás sin ningun tipo de transformación.
+
+\newpage
+
+\subsubsection*{Subtracción}
+
+Dado una expresión como
+
+\begin{align*}
+	\bm{y} &= \bm{a} - \bm{b} \\
+	z &= g(\bm{y})
+\end{align*}
+
+para calcular
+
+\begin{align*}
+	\frac{\partial z}{\partial \bm{a}} &= \frac{\partial z}{\partial \bm{y}} \frac{\partial \bm{y}}{\partial \bm{a}}
+\end{align*}
+
+ocurre algo parecido a la adición, lo único que para $\bm{b}$, el gradiente se propaga con signo negativo, ya que un cambio en $\bm{b}$ afecta $\bm{y}$ de forma inversa,
+es decir, si $\bm{b}$ es 1 mayor, $\bm{y}$ es 1 menor, con lo que
+
+\begin{align*}
+	\frac{\partial z}{\partial \bm{a}} &=  \bm{g} \\
+	\frac{\partial z}{\partial \bm{b}} &= -\bm{g}
+\end{align*}
+
+\subsubsection*{Multiplicación}
+
+Ya que trabajamos con tensores, esta multiplicación consiste de una multiplicación elemento a elemento, es decir,
+$\bm{y} = \bm{a} \odot \bm{b}$, donde $\odot$ es la multiplicación elemento a elemento, esta operación también
+tiene el nombre de producto de Hadamard.
+
+Dado una expresión como
+
+\begin{align*}
+	\bm{y} &= \bm{a} \odot \bm{b} \\
+	z &= g(\bm{y})
+\end{align*}
+
+para calcular
+
+\begin{align*}
+	\frac{\partial z}{\partial \bm{a}} &= \frac{\partial z}{\partial \bm{y}} \frac{\partial \bm{y}}{\partial \bm{a}} \\
+	\frac{\partial z}{\partial \bm{b}} &= \frac{\partial z}{\partial \bm{y}} \frac{\partial \bm{y}}{\partial \bm{b}}
+\end{align*}
+
+se aplica la misma regla que para la multiplicación en el cálculo tradicional de las derivadas, es decir
+
+\begin{align*}
+	\frac{\partial z}{\partial \bm{a}} &= \bm{g} \odot \bm{b} \\
+	\frac{\partial z}{\partial \bm{b}} &= \bm{g} \odot \bm{a}
+\end{align*}
+
+\newpage
+
+\subsubsection*{División}
+
+Para tensores, esto es una división elemento a elemento.
+Dado una expresión como
+
+\begin{align*}
+	\bm{y} &= \frac{\bm{a}}{\bm{b}} \\
+	z &= g(\bm{y})
+\end{align*}
+
+para calcular
+
+\begin{align*}
+	\frac{\partial z}{\partial \bm{a}} &= \frac{\partial z}{\partial \bm{y}} \frac{\partial \bm{y}}{\partial \bm{a}}
+\end{align*}
+
+se aplica la misma regla que para la división en el cálculo tradicional de las derivadas, es decir
+
+\begin{align*}
+	\frac{\partial z}{\partial \bm{a}} &= \frac{\bm{g}}{\bm{b}} \\
+	\frac{\partial z}{\partial \bm{b}} &= -\frac{\bm{g} \odot \bm{a}}{\bm{b}^2}
+\end{align*}
+
+\subsubsection*{Potencias}
+
+Par tensores es una operación elemento a elemento. Dado una expresión como
+
+\begin{align*}
+	\bm{y} &= \bm{a}^{\bm{b}} \\
+	z &= g(\bm{y})
+\end{align*}
+
+para calcular
+
+\begin{align*}
+	\frac{\partial z}{\partial \bm{a}} &= \frac{\partial z}{\partial \bm{y}} \frac{\partial \bm{y}}{\partial \bm{a}} \\
+	\frac{\partial z}{\partial \bm{b}} &= \frac{\partial z}{\partial \bm{y}} \frac{\partial \bm{y}}{\partial \bm{b}}
+\end{align*}
+
+Consiste en aplicar la regla de potencias para $\bm{a}$, y la regla de exponenciación para $\bm{b}$:
+
+\begin{align*}
+	\frac{\partial z}{\partial \bm{a}} &= \bm{g} \odot \bm{b} \odot \bm{a}^{\bm{b} - \bm{1}} \\
+	\frac{\partial z}{\partial \bm{b}} &= \bm{g} \odot \log(\bm{a}) \odot \bm{a}^{\bm{b}}
+\end{align*}
+
+\newpage
+
+\subsubsection*{Multiplicación matricial}
+
+Dado una expresión como
+
+\begin{align*}
+	\bm{Y} &= \bm{A^{\intercal}} \bm{B} \\
+	z &= g(\bm{Y})
+\end{align*}
+
+donde $\bm{A}$ es una matriz de $m \times k$ y $\bm{B}$ es una matriz de $k \times n$,
+la ecuación de sus gradientes es la siguiente, donde $\bm{G}$ es simplemente el gradiente de $z$ respecto a $\bm{Y}$:
+
+\begin{align*}
+	\frac{\partial z}{\partial \bm{A}} = \bm{G} \bm{B^{\intercal}} \\
+	\frac{\partial z}{\partial \bm{B}} = \bm{A^{\intercal}} \bm{G}
+\end{align*}
+
+\subsection{Funciones de activación}
+\subsubsection*{Leaky ReLU}
+
+Dada una expresión como
+
+\begin{align*}
+	\bm{y} &= \text{LeakyReLU}(\bm{x}) = \begin{cases}
+		\bm{x} \quad &\text{si } \bm{x} > 0 \\
+		\alpha \bm{x} \quad &\text{si } \bm{x} \leq 0 \\
+	\end{cases} \\
+	z &= g(\bm{y})
+\end{align*}
+
+su gradiente es simplemente
+
+\begin{align*}
+	\frac{\partial z}{\partial \bm{x}} &= \begin{cases}
+		\bm{g} \quad &\text{si } \bm{x} > 0 \\
+		\alpha \bm{g} \quad &\text{si } \bm{x} \leq 0 \\
+	\end{cases}
+\end{align*}
+
+Este es un ejemplo de donde el razonamiento numérico es más simple que el simbólico, ya que simbólicamente
+la derivada no existe en $\bm{x} = 0$, pero en la práctica,
+se puede dar cualquier valor razonable a la derivada en este punto
+y el algoritmo de optimización funcionará igual de bien.
+
+\newpage
+\subsubsection*{Softmax}
+
+
+\begin{align*}
+	\bm{s} &= \text{Softmax}(\bm{x}) \\% = \frac{e^{\bm{x}}}{\sum_{i=0}^n e^{x_i}} \\
 	g &= f(\bm{s})
 \end{align*}
 
@@ -139,5 +370,25 @@ Para los valores de la jacobiana en sí, estos obtienen de la siguiente ecuació
 		- s_i s_j \quad &\text{si } i \neq j \\
 	\end{cases}
 \end{equation*}
+
+\section{Uso en práctica}
+
+Para usar la diferenciación automática en la práctica, se trata de simplemente usar la clase \texttt{Tensor} para formar las
+expresiones de la red, y luego usar el método \texttt{back} en el valor de perdida para obtener el gradiente de todos los parámetros.
+
+Al final restando el gradiente al valor de los parámetros, se puede usar el método de optimización de gradiente descendiente para optimizar la red.
+
+El grafo de computación se parece a esto:
+
+\begin{figure}[h!]
+	\centering
+	\includesvg[width=0.7\linewidth]{graph}
+\end{figure}
+
+\section{Trabajo futuro}
+
+Para el futuro, se tiene pensado
+implementar las convoluciones y las operaciones de pooling,
+la crossentropy, y otros métodos más avanzados de optimización.
 
 \end{document}
