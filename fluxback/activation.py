@@ -45,5 +45,6 @@ class SoftMax(Function):
 		rowwise = np.expand_dims(n.values, -1)
 		colwise = np.expand_dims(n.values, -2)
 		jacobian = - rowwise * colwise
-		jacobian[..., *np.diag_indices(size,2)] = n.values * (1 - n.values)
+		ii, jj = np.diag_indices(size, 2)
+		jacobian[..., ii, jj] = n.values * (1 - n.values)
 		return ((jacobian @ n.grad[..., None])[...,0],)
