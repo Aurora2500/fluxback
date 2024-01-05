@@ -293,12 +293,15 @@ class ComputationalTensor(Tensor):
 	def zero(self):
 		self.grad = np.zeros_like(self.values)
 		stack = [self]
+		visited = set()
 		while len(stack) > 0:
 			node = stack.pop()
+			visited.add(node)
 			if node.requires_grad:
 				node.grad = np.zeros_like(node.values)
 				if isinstance(node, ComputationalTensor):
 					for dep in node.dependencies:
+						if dep not in visited:
 							stack.append(dep)
 
 	def graphviz(self):
